@@ -46,7 +46,7 @@ async def run_automation_workflow() -> int:
     """
     setup_logging()
     logger.info("Starting Copart automation workflow")
-    logger.info("Configuration: headless=%s, db=%s, download_dir=%s", settings.headless, settings.database_path, settings.download_dir)
+    logger.info("Configuration: headless={}, db={}, download_dir={}", settings.headless, settings.database_path, settings.download_dir)
 
     session_manager = SessionManager()
     try:
@@ -88,7 +88,7 @@ async def run_automation_workflow() -> int:
             # Real searches should be configured by the user via environment
             # or additional command-line arguments.
             test_vin = "5GZCZ43D13S812715"  # Example VIN for demonstration only
-            logger.info("Performing example VIN search (demonstration): %s", test_vin)
+            logger.info("Performing example VIN search (demonstration): {}", test_vin)
             try:
                 vehicles = await search_module.search_by_vin(test_vin)
                 logger.info("Search returned %d vehicle(s)", len(vehicles))
@@ -133,7 +133,7 @@ async def run_automation_workflow() -> int:
         logger.info("Automation workflow completed successfully.")
         return 0
     except Exception as exc:
-        logger.critical("Automation workflow failed: %s", exc, exc_info=True)
+        logger.critical("Automation workflow failed: {}", exc, exc_info=True)
         return 1
 
 
@@ -150,7 +150,7 @@ def main() -> int:
         logger.info("Workflow interrupted by user (SIGINT).")
         exit_code = 130
     except Exception as exc:
-        logger.critical("Unhandled exception in main: %s", exc, exc_info=True)
+        logger.critical("Unhandled exception in main: {}", exc, exc_info=True)
         exit_code = 1
     return exit_code
 

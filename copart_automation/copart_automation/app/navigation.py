@@ -62,7 +62,7 @@ class NavigationHelper:
         if not url.startswith("http"):
             url = f"https://www.copart.com{url}"
 
-        logger.info("Navigating to %s (%s)", page_name, url)
+        logger.info("Navigating to {} ({})", page_name, url)
         page = await self._context.new_page()
         try:
             await page.goto(url, timeout=timeout, wait_until=wait_until)
@@ -72,7 +72,7 @@ class NavigationHelper:
                 raise NavigationError(
                     f"Navigation to '{page_name}' redirected to login. Session may have expired."
                 )
-            logger.info("Successfully navigated to %s (current URL: %s)", page_name, current_url)
+            logger.info("Successfully navigated to {} (current URL: {})", page_name, current_url)
             return page
         except NavigationError:
             raise

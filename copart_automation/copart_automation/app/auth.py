@@ -56,10 +56,10 @@ class AuthManager:
         """
         state_path = settings.storage_state_path
         if not state_path.exists():
-            logger.info("No existing session file found at %s", state_path)
+            logger.info("No existing session file found at {}", state_path)
             return False
 
-        logger.info("Attempting to load existing session from %s", state_path)
+        logger.info("Attempting to load existing session from {}", state_path)
         if not self._manager.is_active():
             await self._manager.start()
 
@@ -68,7 +68,7 @@ class AuthManager:
             try:
                 await existing_context.close()
             except Exception as exc:
-                logger.warning("Failed to close existing default browser context: %s", exc)
+                logger.warning("Failed to close existing default browser context: {}", exc)
 
         try:
             new_context = await self._manager._browser.new_context(
@@ -77,6 +77,7 @@ class AuthManager:
                 viewport={"width": 1280, "height": 720},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             )
+            self._manager._context = new_context
             # Verify the session by navigating to the dashboard
             page = await new_context.new_page()
             await page.goto(COPART_DASHBOARD_URL, timeout=settings.navigation_timeout)
@@ -141,7 +142,7 @@ class AuthManager:
 
         page = await self._context.new_page()
         try:
-            logger.info("Navigating to Copart login page: %s", COPART_LOGIN_URL)
+            logger.info("Navigating to Copart login page: {}", COPART_LOGIN_URL)
             await page.goto(COPART_LOGIN_URL, timeout=settings.navigation_timeout, wait_until="networkidle")
 
             email_selector = ", ".join(
@@ -193,7 +194,7 @@ class AuthManager:
                     "Unable to locate a password input on the Copart login page."
                 )
 
-            logger.info("Credentials filled (email=%s)", email)
+            logger.info("Credentials filled (email={})", email)
 
             # Click the first visible submit/sign-in button
             submit_buttons = await page.query_selector_all(
@@ -241,7 +242,7 @@ class AuthManager:
                     ".error-message, .alert-danger, .login-error, .login-form__error"
                 )
                 if error_text:
-                    logger.error("Login failed with error message: %s", error_text)
+                    logger.error("Login failed with error message: {}", error_text)
                     raise LoginFailure(f"Login rejected by Copart: {error_text}")
                 # If we're back at login and no dashboard indicators exist,
                 # assume failure
@@ -252,7 +253,7 @@ class AuthManager:
                     "Login failed: redirected back to login page. Check credentials."
                 )
 
-            logger.info("Login successful. Current URL: %s", current_url_after)
+            logger.info("Login successful. Current URL: {}", current_url_after)
 
             # Save session state for future reuse
             await self.save_session()
@@ -263,7 +264,7 @@ class AuthManager:
             try:
                 await page.close()
             except Exception as exc:
-                logger.warning("Failed to close login page: %s", exc)
+                logger.warning("Failed to close login page: {}", exc)
 
     async def save_session(self) -> None:
         """Persist the current browser context session to disk.
@@ -279,7 +280,7 @@ class AuthManager:
         state_path = settings.storage_state_path
         state_path.parent.mkdir(parents=True, exist_ok=True)
         await self._context.storage_state(path=str(state_path))
-        logger.info("Session saved to %s", state_path)
+        logger.info("Session saved to {}", state_path)
 
     async def verify_authentication(self) -> bool:
         """Check whether the current context has a valid session.
@@ -304,7 +305,7 @@ class AuthManager:
             for selector in indicators:
                 try:
                     await page.wait_for_selector(selector, timeout=3000)
-                    logger.info("Authentication verified (indicator: %s)", selector)
+                    logger.info("Authentication verified (indicator: {})", selector)
                     return True
                 except Exception:
                     continue
