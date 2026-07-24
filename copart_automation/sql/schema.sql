@@ -58,6 +58,21 @@ CREATE TABLE IF NOT EXISTS downloads (
 CREATE INDEX IF NOT EXISTS idx_downloads_vehicle_id ON downloads(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_file_type ON downloads(file_type);
 
+CREATE TABLE IF NOT EXISTS auction_calendar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_date TEXT NOT NULL,
+    auction_time TEXT,
+    description TEXT,
+    table_section TEXT,
+    row_index INTEGER,
+    column_index INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_date, auction_time, description)
+);
+CREATE INDEX IF NOT EXISTS idx_auction_calendar_date ON auction_calendar(event_date);
+CREATE INDEX IF NOT EXISTS idx_auction_calendar_section ON auction_calendar(table_section);
+
 -- Trigger to update updated_at on vehicles updates
 CREATE TRIGGER IF NOT EXISTS trg_vehicles_updated_at
 AFTER UPDATE ON vehicles

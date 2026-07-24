@@ -33,7 +33,7 @@ from copart_automation.app.logger import get_logger, setup_logging
 from copart_automation.app.navigation import NavigationHelper
 from copart_automation.app.search import SearchModule
 from copart_automation.app.session import SessionManager
-from copart_automation.app.utils import safe_path_join
+from copart_automation.app.calendar import AuctionCalendarParser
 
 logger = get_logger(__name__)
 
@@ -65,6 +65,18 @@ async def run_automation_workflow() -> int:
             search_module = SearchModule(navigation)
             download_manager = DownloadManager(session_manager.browser)
             db = DatabaseModule()
+            auction_parser = AuctionCalendarParser()
+
+            # Scrape the auction calendar immediately after login
+            logger.info("Navigating to auction calendar page...")
+            calendar_page = await navigation.navigate_to_auction_calendar()
+            try:
+                calendar_entries = await auction_parser.parse_calendar(calendar_page)
+                logger.info("Auction calendar parse returned %d entries", len(calendar_entries))
+                for entry in calendar_entries:
+                    db.insert_auction_calendar_entry(entry)
+            finally:
+                await calendar_page.close()
 
             # Example: navigate to dashboard to confirm session
             logger.info("Navigating to dashboard for confirmation...")

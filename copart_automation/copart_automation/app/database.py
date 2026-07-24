@@ -21,7 +21,7 @@ import pandas as pd
 from copart_automation.app.config import settings
 from copart_automation.app.exceptions import CopartAutomationError
 from copart_automation.app.logger import get_logger
-from copart_automation.app.models import DownloadRecord, SearchQuery, Vehicle
+from copart_automation.app.models import AuctionCalendarEntry, DownloadRecord, SearchQuery, Vehicle
 
 logger = get_logger(__name__)
 
@@ -93,6 +93,20 @@ class DatabaseModule:
                         file_size_bytes INTEGER,
                         FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
                         UNIQUE(vehicle_id, file_path)
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS auction_calendar (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_date TEXT NOT NULL,
+                        auction_time TEXT,
+                        description TEXT,
+                        table_section TEXT,
+                        row_index INTEGER,
+                        column_index INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(event_date, auction_time, description)
                     )
                 """)
                 conn.commit()
@@ -193,6 +207,33 @@ class DatabaseModule:
                     record.download_url,
                     record.downloaded_at.isoformat() if record.downloaded_at else None,
                     record.file_size_bytes,
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid or 0
+        finally:
+            conn.close()
+
+    def insert_auction_calendar_entry(self, entry: 'AuctionCalendarEntry') -> int:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            data = entry.to_database_dict()
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO auction_calendar (
+                    event_date, auction_time, description, table_section,
+                    row_index, column_index, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data["event_date"],
+                    data.get("auction_time"),
+                    data.get("description"),
+                    data.get("table_section"),
+                    data.get("row_index"),
+                    data.get("column_index"),
+                    data.get("created_at"),
+                    data.get("updated_at"),
                 ),
             )
             conn.commit()

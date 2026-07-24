@@ -131,3 +131,40 @@ class DownloadRecord(BaseModel):
     download_url: str | None = Field(default=None)
     downloaded_at: datetime = Field(default_factory=datetime.utcnow)
     file_size_bytes: int | None = Field(default=None, ge=0)
+
+
+class AuctionCalendarEntry(BaseModel):
+    """Structured representation of an auction calendar entry."""
+
+    event_date: str = Field(..., description="Auction calendar date in YYYY-MM-DD format")
+    auction_time: str | None = Field(default=None, description="Auction time or session")
+    description: str | None = Field(default=None, description="Auction calendar details")
+    table_section: str | None = Field(default=None, description="Calendar table section or source")
+    row_index: int | None = Field(default=None, description="Row index within the calendar table")
+    column_index: int | None = Field(default=None, description="Column index within the calendar table")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
+
+    def to_database_dict(self) -> dict[str, Any]:
+        data = self.model_dump(mode="json", exclude_none=False)
+        for key in ("created_at", "updated_at"):
+            value = data.get(key)
+            if isinstance(value, datetime):
+                data[key] = value.isoformat()
+            elif value is not None:
+                data[key] = str(value)
+        return data
+
+    @classmethod
+    def from_database_row(cls, row: dict[str, Any]) -> "AuctionCalendarEntry":
+        cleaned = dict(row)
+        for key in ("created_at", "updated_at"):
+            val = cleaned.get(key)
+            if isinstance(val, str):
+                try:
+                    cleaned[key] = datetime.fromisoformat(val)
+                except ValueError:
+                    cleaned[key] = None
+        return cls(**cleaned)

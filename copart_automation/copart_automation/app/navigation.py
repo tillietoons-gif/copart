@@ -26,6 +26,7 @@ NAVIGATION_PATHS = {
     "purchases": "/purchases",
     "auctions": "/auctions",
     "invoices": "/invoices",
+    "auctionCalendar": "/auctionCalendar",
 }
 
 
@@ -94,6 +95,9 @@ class NavigationHelper:
 
     async def navigate_to_invoices(self, timeout: int = 30000) -> Page:
         return await self.navigate_to_page("invoices", timeout=timeout)
+
+    async def navigate_to_auction_calendar(self, timeout: int = 30000) -> Page:
+        return await self.navigate_to_page("auctionCalendar", timeout=timeout)
 
     async def navigate_to_vehicle(self, lot_number: str, timeout: int = 30000) -> Page:
         """Navigate to a specific vehicle detail page by lot number.
