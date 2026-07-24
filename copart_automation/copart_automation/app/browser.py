@@ -149,7 +149,7 @@ class BrowserManager:
 
     def is_active(self) -> bool:
         """Check whether the browser manager has an active context."""
-        return self._context is not None and not self._context.pages == []
+        return self._context is not None
 
     def get_context(self) -> BrowserContext | None:
         """Return the current browser context, or None if not started."""

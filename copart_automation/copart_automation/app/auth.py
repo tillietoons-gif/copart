@@ -60,6 +60,16 @@ class AuthManager:
             return False
 
         logger.info("Attempting to load existing session from %s", state_path)
+        if not self._manager.is_active():
+            await self._manager.start()
+
+        existing_context = self._manager.get_context()
+        if existing_context:
+            try:
+                await existing_context.close()
+            except Exception as exc:
+                logger.warning("Failed to close existing default browser context: %s", exc)
+
         try:
             new_context = await self._manager._browser.new_context(
                 storage_state=str(state_path),
