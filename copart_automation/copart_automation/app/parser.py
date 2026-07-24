@@ -12,6 +12,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -52,6 +53,14 @@ class VehicleParser:
             ParseError: If the page structure does not match expected patterns.
         """
         logger.info("Parsing search results from {}", page.url)
+        try:
+            export_vehicles = await self.parse_export_lot_search_results(page)
+            if export_vehicles:
+                logger.info("Using export endpoint for {} results", len(export_vehicles))
+                return export_vehicles
+        except Exception as exc:
+            logger.warning("Export endpoint parsing failed for {}: {}", page.url, exc)
+
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "lxml")
 
@@ -100,12 +109,138 @@ class VehicleParser:
             logger.error(f"Failed to parse vehicle details: {exc}")
             raise ParseError(f"Could not parse vehicle details: {exc}") from exc
 
+    async def parse_export_lot_search_results(self, page: Page) -> list[Vehicle]:
+        """Parse the Copart exportLotSearchResults JSON payload.
+
+        The endpoint returns a JSON array of lot-search rows that can be
+        consumed directly without scraping the HTML markup. This is more
+        reliable for account-accessible auction pages and keeps the existing
+        parser API consistent.
+        """
+        logger.info("Parsing export lot search results from {}", page.url)
+        payload_text: str | None = None
+
+        context = getattr(page, "context", None)
+        request_api = getattr(context, "request", None)
+        if request_api is not None:
+            get_method = getattr(request_api, "get", None)
+            if callable(get_method):
+                try:
+                    headers = {
+                        "accept": "application/json, text/plain, */*",
+                        "accept-language": "en-US,en;q=0.9",
+                        "cache-control": "no-cache",
+                        "pragma": "no-cache",
+                        "referer": str(page.url),
+                        "x-requested-with": "XMLHttpRequest",
+                        "user-agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/125.0.0.0 Safari/537.36"
+                        ),
+                    }
+                    response = await get_method(
+                        "https://www.copart.com/client/exportLotSearchResults",
+                        headers=headers,
+                    )
+                    if getattr(response, "ok", False):
+                        payload_text = await response.text()
+                except Exception:
+                    payload_text = None
+
+        if not payload_text:
+            evaluate = getattr(page, "evaluate", None)
+            if callable(evaluate):
+                try:
+                    payload_text = await evaluate("() => document.body.innerText || document.documentElement.innerText")
+                except Exception:
+                    payload_text = None
+
+        if not payload_text:
+            content = getattr(page, "content", None)
+            if callable(content):
+                try:
+                    payload_text = await content()
+                except Exception:
+                    payload_text = None
+
+        if not payload_text:
+            request = getattr(page, "request", None)
+            get_method = getattr(request, "get", None)
+            if callable(get_method):
+                try:
+                    response = await get_method(str(page.url), headers={})
+                    payload_text = await response.text()
+                except Exception:
+                    payload_text = None
+
+        if not payload_text:
+            return []
+
+        vehicles: list[Vehicle] = []
+        try:
+            data = json.loads(payload_text)
+        except json.JSONDecodeError:
+            # Some responses may be wrapped in a JSON object or contain a preamble.
+            cleaned = payload_text.strip()
+            if cleaned.startswith("[") and cleaned.endswith("]"):
+                data = json.loads(cleaned)
+            else:
+                import re
+                match = re.search(r"\[(.*?)\]\s*$", cleaned, re.DOTALL)
+                if match:
+                    data = json.loads(match.group(0))
+                else:
+                    return []
+
+        if isinstance(data, dict):
+            rows = data.get("results") or data.get("data") or data.get("lots") or []
+        else:
+            rows = data
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            lot_number = row.get("lotNumber") or row.get("lot") or row.get("lotNumberDisplay")
+            vin = row.get("vin") or row.get("VIN")
+            if not lot_number or not vin:
+                continue
+
+            vehicle = Vehicle(
+                vin=str(vin).strip(),
+                lot_number=str(lot_number).strip(),
+                title_text=row.get("title") or row.get("titleText"),
+                year=self._clean_int(str(row.get("year") or "")),
+                make=row.get("make"),
+                model=row.get("model"),
+                odometer=self._clean_int(str(row.get("odometer") or "")),
+                damage_description=row.get("damage") or row.get("damageDescription"),
+                sale_date=row.get("saleDate") or row.get("auctionDate"),
+                current_bid=self._clean_float(str(row.get("currentBid") or row.get("bid") or "")),
+                auction_status=row.get("status") or row.get("auctionStatus"),
+                detail_url=row.get("detailUrl") or row.get("lotUrl"),
+                image_urls=row.get("imageUrls") if isinstance(row.get("imageUrls"), list) else None,
+            )
+            vehicles.append(vehicle)
+
+        return vehicles
+
     async def parse_lots_list(self, page: Page) -> list[str]:
         """Parse an auction 'lots view' page and return a list of lot detail URLs.
 
         This returns absolute URLs to individual lot/detail pages.
         """
         logger.info("Parsing lots list from {}", page.url)
+        try:
+            export_vehicles = await self.parse_export_lot_search_results(page)
+            if export_vehicles:
+                urls = [str(vehicle.detail_url) for vehicle in export_vehicles if vehicle.detail_url]
+                if urls:
+                    logger.info("Using export endpoint for {} lot URLs", len(urls))
+                    return self._dedupe_urls(urls)
+        except Exception as exc:
+            logger.warning("Export endpoint lot parsing failed for {}: {}", page.url, exc)
+
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "lxml")
 
@@ -126,14 +261,18 @@ class VehicleParser:
                 if href.startswith("http") and href not in urls:
                     urls.append(href)
 
-        # Deduplicate while preserving order
+        deduped = self._dedupe_urls(urls)
+        logger.info("Found {} lot URLs on page", len(deduped))
+        return deduped
+
+    @staticmethod
+    def _dedupe_urls(urls: list[str]) -> list[str]:
         seen = set()
         deduped: list[str] = []
         for u in urls:
             if u not in seen:
                 seen.add(u)
                 deduped.append(u)
-        logger.info("Found {} lot URLs on page", len(deduped))
         return deduped
 
     async def _parse_result_container(self, container: Any) -> Vehicle | None:

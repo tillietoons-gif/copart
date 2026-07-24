@@ -11,6 +11,39 @@ import pytest
 from copart_automation.app.parser import VehicleParser
 
 
+class _FakeResponse:
+    def __init__(self, payload: str, status: int = 200) -> None:
+        self._payload = payload
+        self.status = status
+
+    @property
+    def ok(self) -> bool:
+        return 200 <= self.status < 300
+
+    async def text(self) -> str:
+        return self._payload
+
+
+class _FakeRequest:
+    def __init__(self, payload: str) -> None:
+        self.payload = payload
+
+    async def get(self, url: str, headers: dict | None = None) -> _FakeResponse:
+        return _FakeResponse(self.payload)
+
+
+class _FakePage:
+    def __init__(self, payload: str) -> None:
+        self.url = "https://www.copart.com/saleListResult/23/2026-07-24"
+        self.request = _FakeRequest(payload)
+
+    async def evaluate(self, script: str) -> str:
+        return self.request.payload
+
+    async def content(self) -> str:
+        return self.request.payload
+
+
 class TestParserHelpers:
     """Verify static parser utility methods."""
 
@@ -47,3 +80,18 @@ class TestParserHelpers:
         soup = BeautifulSoup(html, "lxml")
         result = VehicleParser._find_text(soup, [".missing"])
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_parse_export_lot_search_results(self) -> None:
+        parser = VehicleParser()
+        page = _FakePage(
+            '[{"lotNumber":"12345678","vin":"5GZCZ43D13S812715","title":"Clean","year":"2020","make":"Chevrolet","model":"Camaro","odometer":"45000","damage":"Front End","currentBid":"2500.00"}]'
+        )
+
+        vehicles = await parser.parse_export_lot_search_results(page)
+
+        assert len(vehicles) == 1
+        assert vehicles[0].lot_number == "12345678"
+        assert vehicles[0].vin == "5GZCZ43D13S812715"
+        assert vehicles[0].make == "Chevrolet"
+        assert vehicles[0].current_bid == 2500.0
