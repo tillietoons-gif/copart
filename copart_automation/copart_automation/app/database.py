@@ -110,7 +110,7 @@ class DatabaseModule:
                     )
                 """)
                 conn.commit()
-            logger.info("Database schema initialized at %s", self.db_path)
+            logger.info("Database schema initialized at {}", self.db_path)
         finally:
             conn.close()
 
@@ -147,7 +147,7 @@ class DatabaseModule:
                 )
                 conn.commit()
                 vehicle_id = cursor.lastrowid
-                logger.info("Inserted vehicle %s (id=%d)", vehicle.lot_number, vehicle_id)
+                logger.info("Inserted vehicle {} (id={})", vehicle.lot_number, vehicle_id)
                 return vehicle_id or 0
             except sqlite3.IntegrityError:
                 # Duplicate: retrieve existing ID
@@ -157,7 +157,7 @@ class DatabaseModule:
                 ).fetchone()
                 conn.rollback()
                 if row:
-                    logger.info("Vehicle %s already exists (id=%d); skipped insert.", vehicle.lot_number, row[0])
+                    logger.info("Vehicle {} already exists (id={}); skipped insert.", vehicle.lot_number, row[0])
                     return row[0]
                 else:
                     raise CopartAutomationError("Duplicate key conflict but existing record not found.")
@@ -273,7 +273,7 @@ class DatabaseModule:
             df = pd.read_sql_query("SELECT * FROM vehicles", conn)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(output_path, index=False)
-            logger.info("Exported %d vehicles to CSV: %s", len(df), output_path)
+            logger.info("Exported {} vehicles to CSV: {}", len(df), output_path)
             return output_path.resolve()
         finally:
             conn.close()
@@ -284,7 +284,7 @@ class DatabaseModule:
             df = pd.read_sql_query("SELECT * FROM vehicles", conn)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             df.to_excel(output_path, index=False, engine="openpyxl")
-            logger.info("Exported %d vehicles to Excel: %s", len(df), output_path)
+            logger.info("Exported {} vehicles to Excel: {}", len(df), output_path)
             return output_path.resolve()
         finally:
             conn.close()
@@ -300,7 +300,7 @@ class DatabaseModule:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, default=str)
-            logger.info("Exported %d vehicles to JSON: %s", len(data), output_path)
+            logger.info("Exported {} vehicles to JSON: {}", len(data), output_path)
             return output_path.resolve()
         finally:
             conn.close()

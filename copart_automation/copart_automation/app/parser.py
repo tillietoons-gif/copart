@@ -51,7 +51,7 @@ class VehicleParser:
         Raises:
             ParseError: If the page structure does not match expected patterns.
         """
-        logger.info("Parsing search results from %s", page.url)
+        logger.info("Parsing search results from {}", page.url)
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "lxml")
 
@@ -75,7 +75,7 @@ class VehicleParser:
                 continue
 
         if not vehicles and result_containers:
-            logger.info("No complete vehicles parsed from %d containers.", len(result_containers))
+            logger.info("No complete vehicles parsed from {} containers.", len(result_containers))
         elif not vehicles:
             logger.info("No result containers found on page.")
 
@@ -90,7 +90,7 @@ class VehicleParser:
         Returns:
             A Vehicle instance if parsing succeeds; None otherwise.
         """
-        logger.info("Parsing vehicle details from %s", page.url)
+        logger.info("Parsing vehicle details from {}", page.url)
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "lxml")
 

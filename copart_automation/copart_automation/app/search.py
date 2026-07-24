@@ -47,7 +47,7 @@ class SearchModule:
         Returns:
             A list of Vehicle instances matching the VIN search.
         """
-        logger.info("Starting VIN search for %s", vin)
+        logger.info("Starting VIN search for {}", vin)
         page = await self._navigation.navigate_to_search(timeout=timeout)
         try:
             # Interact with search form (selectors are approximate)
@@ -58,7 +58,7 @@ class SearchModule:
             await page.click("button[type='submit'], input[type='submit']")
             await page.wait_for_load_state("networkidle", timeout=timeout)
             vehicles = await self._parser.parse_search_results(page)
-            logger.info("VIN search for %s returned %d results", vin, len(vehicles))
+            logger.info("VIN search for {} returned {} results", vin, len(vehicles))
             return vehicles
         finally:
             await page.close()
@@ -73,7 +73,7 @@ class SearchModule:
         Returns:
             A list containing the matching vehicle (typically one result).
         """
-        logger.info("Starting lot search for %s", lot_number)
+        logger.info("Starting lot search for {}", lot_number)
         # Direct navigation to lot page is often faster than form search
         try:
             page = await self._navigation.navigate_to_vehicle(lot_number, timeout=timeout)
@@ -113,7 +113,7 @@ class SearchModule:
             query_value += f" {model}"
         if year:
             query_value += f" {year}"
-        logger.info("Starting make/model search: %s", query_value)
+        logger.info("Starting make/model search: {}", query_value)
         page = await self._navigation.navigate_to_search(timeout=timeout)
         try:
             # Attempt to fill general search or specific fields
@@ -121,7 +121,7 @@ class SearchModule:
             await page.click("button[type='submit']")
             await page.wait_for_load_state("networkidle", timeout=timeout)
             vehicles = await self._parser.parse_search_results(page)
-            logger.info("Make/model search returned %d results", len(vehicles))
+            logger.info("Make/model search returned {} results", len(vehicles))
             return vehicles
         finally:
             await page.close()

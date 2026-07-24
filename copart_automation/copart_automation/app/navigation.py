@@ -110,7 +110,7 @@ class NavigationHelper:
             The Page instance for the vehicle detail page.
         """
         url = f"https://www.copart.com/lot/{lot_number}"
-        logger.info("Navigating to vehicle detail page: %s", url)
+        logger.info("Navigating to vehicle detail page: {}", url)
         page = await self._context.new_page()
         try:
             await page.goto(url, timeout=timeout, wait_until="networkidle")
