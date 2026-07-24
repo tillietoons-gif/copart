@@ -1,0 +1,38 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Environment (credentials must never be committed)
+.env
+
+# Runtime artifacts
+logs/
+*.log
+
+# Downloads (data may contain sensitive account info)
+downloads/
+
+# Database (contains account data)
+data/*.db
+data/auth_state.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
