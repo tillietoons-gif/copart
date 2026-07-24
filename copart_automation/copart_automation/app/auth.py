@@ -143,7 +143,18 @@ class AuthManager:
         page = await self._context.new_page()
         try:
             logger.info("Navigating to Copart login page: {}", COPART_LOGIN_URL)
-            await page.goto(COPART_LOGIN_URL, timeout=settings.navigation_timeout, wait_until="networkidle")
+            try:
+                await page.goto(
+                    COPART_LOGIN_URL,
+                    timeout=settings.navigation_timeout,
+                    wait_until="networkidle",
+                )
+            except Exception as exc:
+                # Normalize Playwright navigation timeouts to built-in TimeoutError
+                msg = str(exc)
+                if "timeout" in msg.lower() or "timed out" in msg.lower():
+                    raise TimeoutError(msg) from exc
+                raise
 
             email_selector = ", ".join(
                 [

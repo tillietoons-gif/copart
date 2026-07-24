@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     )
 
     # Timeouts (milliseconds, mapped to Playwright expectations)
-    navigation_timeout: int = Field(default=30000, description="Page navigation timeout (ms)")
+    navigation_timeout: int = Field(default=60000, description="Page navigation timeout (ms)")
     action_timeout: int = Field(default=10000, description="Individual action timeout (ms)")
 
     # Retry configuration

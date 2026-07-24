@@ -1,0 +1,3 @@
+2026-07-24 10:54:31 | INFO     | copart_automation.app.session:close:125 - Closing session manager.
+2026-07-24 10:54:31 | WARNING  | copart_automation.app.auth:save_session:277 - No active context to save.
+2026-07-24 10:54:31 | INFO     | copart_automation.app.browser:close:128 - Closing browser resources
