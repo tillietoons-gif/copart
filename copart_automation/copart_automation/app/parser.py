@@ -305,12 +305,72 @@ class VehicleParser:
 
         Returns the first non-empty text match.
         """
+        # Try CSS selectors first
         for selector in selectors:
-            element = container.select_one(selector)
+            try:
+                element = container.select_one(selector)
+            except Exception:
+                element = None
             if element:
                 text = element.get_text(strip=True)
                 if text:
                     return text
+
+        # Fallback: search the full text for common label patterns
+        try:
+            full_text = container.get_text(separator="\n", strip=True)
+        except Exception:
+            try:
+                full_text = str(container)
+            except Exception:
+                return None
+
+        # Map selectors to simple keywords (best-effort)
+        keywords = []
+        for s in selectors:
+            # extract readable token from selector
+            token = s
+            # remove CSS punctuation
+            for ch in ['.', '#', '[', ']', '>', '+', '~', '*', ':']:
+                token = token.replace(ch, ' ')
+            token = token.strip()
+            if token:
+                # split and take likely words
+                parts = token.split()
+                for p in parts:
+                    if len(p) > 2:
+                        keywords.append(p)
+
+        # Deduplicate keywords while preserving order
+        seen = set()
+        dedup_k = []
+        for k in keywords:
+            kl = k.lower()
+            if kl not in seen:
+                seen.add(kl)
+                dedup_k.append(k)
+
+        # Search for label: value patterns like "VIN: 1HGBH41JXMN109186"
+        import re
+        for k in dedup_k:
+            pattern = re.compile(rf"{re.escape(k)}\s*[:\-\t]*\s*(.+)", re.IGNORECASE)
+            m = pattern.search(full_text)
+            if m:
+                val = m.group(1).split('\n')[0].strip()
+                if val:
+                    return val
+
+        # Specific heuristics for VIN and lot number
+        # VIN (17 chars, may be masked with asterisks)
+        vin_match = re.search(r"([A-HJ-NPR-Z0-9\*]{6,17})", full_text)
+        if vin_match:
+            return vin_match.group(1)
+
+        # Lot number: look for 'Lot' followed by digits
+        lot_match = re.search(r"Lot(?:\s|\#|\:)?\s*([0-9]{3,12})", full_text, re.IGNORECASE)
+        if lot_match:
+            return lot_match.group(1)
+
         return None
 
     @staticmethod

@@ -49,6 +49,30 @@ class DatabaseModule:
                 schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
                 conn.executescript(schema_sql)
                 conn.commit()
+            # Ensure lot scrape status table exists for tracking
+            try:
+                if not conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='lot_scrape_status'").fetchone():
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS lot_scrape_status (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            auction_id INTEGER,
+                            lot_url TEXT NOT NULL UNIQUE,
+                            status TEXT NOT NULL DEFAULT 'pending',
+                            attempts INTEGER NOT NULL DEFAULT 0,
+                            last_error TEXT,
+                            last_attempt_at TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (auction_id) REFERENCES auction_calendar(id) ON DELETE SET NULL
+                        )
+                        """
+                    )
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_lot_scrape_status_auction ON lot_scrape_status(auction_id)")
+                    conn.commit()
+            except Exception:
+                # Non-fatal: continue even if table creation fails (older DBs remain usable)
+                pass
             else:
                 # Minimal fallback schema creation
                 conn.execute("""
@@ -132,6 +156,40 @@ class DatabaseModule:
             logger.info("Database schema initialized at {}", self.db_path)
         finally:
             conn.close()
+
+        # Post-migration: remove duplicate auction_calendar rows keeping one with lots_view_url when available
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT id, event_date, COALESCE(auction_time,'') as auction_time, COALESCE(description,'') as description, lots_view_url FROM auction_calendar ORDER BY id").fetchall()
+            seen: dict[tuple[str, str, str], int] = {}
+            to_delete: list[int] = []
+            for row in rows:
+                key = (row["event_date"], row["auction_time"], row["description"].lower())
+                if key in seen:
+                    # prefer to keep the existing record if it has lots_view_url; otherwise replace
+                    existing_id = seen[key]
+                    existing_row = conn.execute("SELECT lots_view_url FROM auction_calendar WHERE id = ?", (existing_id,)).fetchone()
+                    if (existing_row and existing_row[0]) or (row["lots_view_url"] is None):
+                        # keep existing, delete current
+                        to_delete.append(row["id"])
+                    else:
+                        # delete existing, keep current
+                        to_delete.append(existing_id)
+                        seen[key] = row["id"]
+                else:
+                    seen[key] = row["id"]
+            if to_delete:
+                conn.executemany("DELETE FROM auction_calendar WHERE id = ?", [(i,) for i in to_delete])
+                conn.commit()
+                logger.info("Cleaned up {} duplicate auction_calendar rows", len(to_delete))
+        except Exception as exc:
+            logger.warning(f"Could not cleanup duplicate auction_calendar rows: {exc}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def insert_vehicle(self, vehicle: Vehicle) -> int:
         """Insert or update a vehicle, avoiding duplicates.
@@ -296,6 +354,59 @@ class DatabaseModule:
             conn.row_factory = sqlite3.Row
             rows = conn.execute("SELECT * FROM auction_calendar WHERE COALESCE(lots_view_url,'') != '' ORDER BY event_date").fetchall()
             return [AuctionCalendarEntry.from_database_row(dict(row)) for row in rows]
+        finally:
+            conn.close()
+
+    def ensure_lot_record(self, auction_lots_view_url: str | None, lot_url: str) -> int:
+        """Insert a lot scrape record if missing and return its id.
+
+        Attempts to resolve `auction_id` by matching `auction_calendar.lots_view_url`.
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute("PRAGMA foreign_keys = ON;")
+            # Try to find auction id by lots_view_url
+            auction_id = None
+            if auction_lots_view_url:
+                row = conn.execute(
+                    "SELECT id FROM auction_calendar WHERE COALESCE(lots_view_url,'') = ? LIMIT 1",
+                    (str(auction_lots_view_url),),
+                ).fetchone()
+                if row:
+                    auction_id = row[0]
+
+            try:
+                cursor = conn.execute(
+                    "INSERT OR IGNORE INTO lot_scrape_status (auction_id, lot_url, status, attempts, created_at, updated_at) VALUES (?, ?, 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    (auction_id, lot_url),
+                )
+                conn.commit()
+            finally:
+                # Retrieve id whether we inserted or it existed
+                row = conn.execute("SELECT id FROM lot_scrape_status WHERE lot_url = ?", (lot_url,)).fetchone()
+                return row[0] if row else 0
+        finally:
+            conn.close()
+
+    def update_lot_status(self, lot_url: str, status: str, error: str | None = None) -> None:
+        """Update a lot scrape record's status, increment attempts, and record last error/time."""
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute("PRAGMA foreign_keys = ON;")
+            # Increment attempts and set status and last_error
+            conn.execute(
+                """
+                UPDATE lot_scrape_status
+                SET status = ?,
+                    attempts = attempts + 1,
+                    last_error = ?,
+                    last_attempt_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE lot_url = ?
+                """,
+                (status, error, lot_url),
+            )
+            conn.commit()
         finally:
             conn.close()
 

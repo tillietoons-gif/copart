@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     retry_backoff_multiplier: float = Field(default=2.0, description="Exponential backoff multiplier")
     retry_initial_delay: float = Field(default=1.0, description="Initial retry delay (seconds)")
 
+    # Concurrency for lot scraping
+    lot_concurrency: int = Field(default=5, description="Maximum concurrent lot detail page parsers")
+
     # Logging
     log_level: str = Field(default="INFO", description="Minimum log level")
     log_file: str = Field(default="logs/copart_automation.log", description="Log file path")

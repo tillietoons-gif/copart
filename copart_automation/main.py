@@ -34,6 +34,7 @@ from copart_automation.app.navigation import NavigationHelper
 from copart_automation.app.search import SearchModule
 from copart_automation.app.session import SessionManager
 from copart_automation.app.calendar import AuctionCalendarParser
+from copart_automation.app.parser import VehicleParser
 
 logger = get_logger(__name__)
 
@@ -66,6 +67,7 @@ async def run_automation_workflow() -> int:
             download_manager = DownloadManager(session_manager.browser)
             db = DatabaseModule()
             auction_parser = AuctionCalendarParser()
+            vehicle_parser = VehicleParser()
 
             # Scrape the auction calendar immediately after login
             logger.info("Navigating to auction calendar page...")
@@ -73,6 +75,25 @@ async def run_automation_workflow() -> int:
             try:
                 calendar_entries = await auction_parser.parse_calendar(calendar_page)
                 logger.info("Auction calendar parse returned {} entries", len(calendar_entries))
+                    # Normalize and deduplicate calendar entries (merge lots_view_url when available)
+                normalized: dict[tuple[str, str, str], AuctionCalendarEntry] = {}
+                for e in calendar_entries:
+                    key = (
+                        (e.event_date or "").strip(),
+                        ((e.auction_time or "") if e.auction_time is not None else "").strip(),
+                        ((e.description or "") if e.description is not None else "").strip().lower(),
+                    )
+                    existing = normalized.get(key)
+                    if not existing:
+                        normalized[key] = e
+                    else:
+                        # Prefer a non-empty lots_view_url
+                        if not existing.lots_view_url and e.lots_view_url:
+                            existing.lots_view_url = e.lots_view_url
+                        if not existing.lots_view_text and e.lots_view_text:
+                            existing.lots_view_text = e.lots_view_text
+                calendar_entries = list(normalized.values())
+                logger.info("Deduplicated auction calendar entries to {} unique entries", len(calendar_entries))
                 for entry in calendar_entries:
                     db.insert_auction_calendar_entry(entry)
                 # After inserting calendar entries, iterate through auctions that have a lots view URL
@@ -85,20 +106,36 @@ async def run_automation_workflow() -> int:
                         logger.info("Opening lots view for auction: {} -> {}", auction.description, auction.lots_view_url)
                         lots_page = await navigation.navigate_to_page(auction.lots_view_url, timeout=settings.navigation_timeout)
                         try:
-                            lot_urls = await auction_parser.parse_lots_list(lots_page)
+                            lot_urls = await vehicle_parser.parse_lots_list(lots_page)
                             logger.info("Found {} lots for auction {}", len(lot_urls), auction.description)
-                            # Visit each lot URL and parse details
-                            for lot_url in lot_urls:
-                                try:
-                                    lot_page = await navigation.navigate_to_page(lot_url, timeout=settings.navigation_timeout)
+                            # Visit each lot URL and parse details concurrently (bounded)
+                            semaphore = asyncio.Semaphore(settings.lot_concurrency)
+                            tasks = []
+
+                            async def process_lot(lot_url: str) -> None:
+                                async with semaphore:
+                                    # Ensure record exists and mark in-progress
+                                    db.ensure_lot_record(auction.lots_view_url if auction.lots_view_url else None, lot_url)
+                                    db.update_lot_status(lot_url, "in_progress")
                                     try:
-                                        vehicle = await auction_parser.parse_vehicle_details(lot_page)
-                                        if vehicle:
-                                            db.insert_vehicle(vehicle)
-                                    finally:
-                                        await lot_page.close()
-                                except Exception as exc:
-                                    logger.warning("Failed to parse lot {}: {}", lot_url, exc)
+                                        lot_page = await navigation.navigate_to_page(lot_url, timeout=settings.navigation_timeout)
+                                        try:
+                                            vehicle = await vehicle_parser.parse_vehicle_details(lot_page)
+                                            if vehicle:
+                                                db.insert_vehicle(vehicle)
+                                            db.update_lot_status(lot_url, "done")
+                                        finally:
+                                            await lot_page.close()
+                                    except Exception as exc:
+                                        logger.warning("Failed to parse lot {}: {}", lot_url, exc)
+                                        db.update_lot_status(lot_url, "failed", error=str(exc))
+
+                            for lot_url in lot_urls:
+                                tasks.append(asyncio.create_task(process_lot(lot_url)))
+
+                            # Wait for all lot tasks to complete for this auction
+                            if tasks:
+                                await asyncio.gather(*tasks)
                         finally:
                             await lots_page.close()
                     except Exception as exc:

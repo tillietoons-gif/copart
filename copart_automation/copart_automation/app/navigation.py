@@ -58,7 +58,10 @@ class NavigationHelper:
         Returns:
             The Playwright Page instance after successful navigation.
         """
+        # Accept HttpUrl or similar objects by coercing to str
+        page_name = str(page_name)
         url = NAVIGATION_PATHS.get(page_name, page_name)
+        url = str(url)
         if not url.startswith("http"):
             url = f"https://www.copart.com{url}"
 
