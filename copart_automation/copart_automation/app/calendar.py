@@ -24,7 +24,7 @@ class AuctionCalendarParser:
     async def parse_calendar(self, page: Page) -> list[AuctionCalendarEntry]:
         """Parse the auction calendar from the given page."""
         page_url = getattr(page, "url", "unknown")
-        logger.info("Parsing auction calendar from %s", page_url)
+        logger.info("Parsing auction calendar from {}", page_url)
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "lxml")
 
@@ -39,7 +39,7 @@ class AuctionCalendarParser:
         for table_index, table in enumerate(tables, start=1):
             entries.extend(self._parse_calendar_table(table, table_index))
 
-        logger.info("Parsed %d auction calendar entries", len(entries))
+        logger.info("Parsed {} auction calendar entries", len(entries))
         return entries
 
     def _parse_calendar_table(self, table: Any, table_index: int) -> list[AuctionCalendarEntry]:

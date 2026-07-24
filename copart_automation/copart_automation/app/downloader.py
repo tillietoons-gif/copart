@@ -63,7 +63,7 @@ class DownloadManager:
         save_path.parent.mkdir(parents=True, exist_ok=True)
         page = await context.new_page()
         try:
-            logger.info("Starting download from %s", url)
+            logger.info("Starting download from {}", url)
             # Set up download event tracking
             download_started = False
             download_complete = False
@@ -112,9 +112,7 @@ class DownloadManager:
                 raise DownloadError(f"Download file missing after save: {download_path}")
 
             file_size = download_path.stat().st_size
-            logger.info(
-                "Download complete: %s (%d bytes)", download_path, file_size
-            )
+            logger.info("Download complete: {} ({} bytes)", download_path, file_size)
             return download_path
         except Exception as exc:
             if isinstance(exc, DownloadError):
@@ -139,7 +137,7 @@ class DownloadManager:
             A list of DownloadRecord instances for each downloaded file.
         """
         if not vehicle.image_urls:
-            logger.info("No image URLs available for vehicle %s", vehicle.lot_number)
+            logger.info("No image URLs available for vehicle {}", vehicle.lot_number)
             return []
 
         base_folder = settings.download_dir / "vehicles" / str(vehicle.lot_number)

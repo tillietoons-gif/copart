@@ -72,7 +72,7 @@ async def run_automation_workflow() -> int:
             calendar_page = await navigation.navigate_to_auction_calendar()
             try:
                 calendar_entries = await auction_parser.parse_calendar(calendar_page)
-                logger.info("Auction calendar parse returned %d entries", len(calendar_entries))
+                logger.info("Auction calendar parse returned {} entries", len(calendar_entries))
                 for entry in calendar_entries:
                     db.insert_auction_calendar_entry(entry)
             finally:
@@ -91,10 +91,10 @@ async def run_automation_workflow() -> int:
             logger.info("Performing example VIN search (demonstration): {}", test_vin)
             try:
                 vehicles = await search_module.search_by_vin(test_vin)
-                logger.info("Search returned %d vehicle(s)", len(vehicles))
+                logger.info("Search returned {} vehicle(s)", len(vehicles))
                 for vehicle in vehicles:
                     logger.info(
-                        "Vehicle: %s | %s %s | Lot: %s | Bid: %s",
+                        "Vehicle: {} | {} {} | Lot: {} | Bid: {}",
                         vehicle.vin,
                         vehicle.year,
                         vehicle.make,
@@ -105,7 +105,7 @@ async def run_automation_workflow() -> int:
                     vehicle_id = db.insert_vehicle(vehicle)
                     # Optionally download images (limited for demonstration)
                     if vehicle.image_urls:
-                        logger.info("Attempting to download images for lot %s", vehicle.lot_number)
+                        logger.info("Attempting to download images for lot {}", vehicle.lot_number)
                         try:
                             records = await download_manager.download_vehicle_images(vehicle, max_images=2)
                             for record in records:
@@ -113,7 +113,7 @@ async def run_automation_workflow() -> int:
                                 if vehicle_id:
                                     record.vehicle_id = vehicle_id
                                 db.insert_download(record)
-                            logger.info("Downloaded %d images.", len(records))
+                            logger.info("Downloaded {} images.", len(records))
                         except Exception as exc:
                             logger.warning(f"Image download failed (not blocking): {exc}")
             except Exception as exc:
