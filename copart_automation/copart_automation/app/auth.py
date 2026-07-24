@@ -144,11 +144,32 @@ class AuthManager:
             logger.info("Navigating to Copart login page: %s", COPART_LOGIN_URL)
             await page.goto(COPART_LOGIN_URL, timeout=settings.navigation_timeout, wait_until="networkidle")
 
-            # Wait for the login form to appear (site-specific selectors)
-            # We use generic selectors that are resilient to minor changes.
+            email_selector = ", ".join(
+                [
+                    "input#username",
+                    "input[name='username']",
+                    "input[type='email']",
+                    "input[autocomplete='username']",
+                    "input#email-member-number",
+                    "input[name='email-member-number']",
+                    "input[id*='email']",
+                ]
+            )
+            password_selector = ", ".join(
+                [
+                    "input#password",
+                    "input[name='password']",
+                    "input[type='password']",
+                    "input[autocomplete='current-password']",
+                    "input#member-password",
+                    "input[name='member-password']",
+                    "input[id*='password']",
+                ]
+            )
+
             try:
                 await page.wait_for_selector(
-                    "input[type='email'], input[name='email'], input[type='text']",
+                    f"{email_selector}, {password_selector}",
                     timeout=settings.action_timeout,
                 )
             except Exception as exc:
@@ -156,29 +177,36 @@ class AuthManager:
                     f"Login form did not load. The page structure may have changed. Details: {exc}"
                 ) from exc
 
-            # Fill credentials
-            email_input = await page.query_selector("input[type='email'], input[name='email']")
+            email_input = await page.query_selector(email_selector)
             if email_input:
                 await email_input.fill(email)
             else:
-                # Fallback to first text input
-                await page.fill("input[type='text']", email)
+                raise LoginFailure(
+                    "Unable to locate an email/username input on the Copart login page."
+                )
 
-            password_input = await page.query_selector("input[type='password']")
+            password_input = await page.query_selector(password_selector)
             if password_input:
                 await password_input.fill(settings.copart_password.get_secret_value())
             else:
-                await page.fill("input[type='password']", settings.copart_password.get_secret_value())
+                raise LoginFailure(
+                    "Unable to locate a password input on the Copart login page."
+                )
 
             logger.info("Credentials filled (email=%s)", email)
 
-            # Click submit
-            submit_button = await page.query_selector(
-                "button[type='submit'], input[type='submit'], button:has-text('Log In'), button:has-text('Sign In')"
+            # Click the first visible submit/sign-in button
+            submit_buttons = await page.query_selector_all(
+                "button[type='submit'], input[type='submit'], button:has-text('Log In'), button:has-text('Sign In'), button:has-text('Sign in'), button:has-text('Sign into account'), button:has-text('Submit')"
             )
-            if submit_button:
-                await submit_button.click()
-            else:
+            clicked = False
+            for submit_button in submit_buttons:
+                if await submit_button.is_visible() and await submit_button.is_enabled():
+                    await submit_button.click()
+                    clicked = True
+                    break
+
+            if not clicked:
                 await page.keyboard.press("Enter")
 
             # Wait for navigation after submit (either success or failure)
@@ -209,14 +237,20 @@ class AuthManager:
             current_url_after = page.url
             if "/login" in current_url_after and "/dashboard" not in current_url_after:
                 # Check for explicit error messages
-                error_text = await page.text_content(".error-message, .alert-danger, .login-error")
+                error_text = await page.text_content(
+                    ".error-message, .alert-danger, .login-error, .login-form__error"
+                )
                 if error_text:
                     logger.error("Login failed with error message: %s", error_text)
                     raise LoginFailure(f"Login rejected by Copart: {error_text}")
                 # If we're back at login and no dashboard indicators exist,
                 # assume failure
-                logger.error("Login failed: redirected back to login page without success indicators.")
-                raise LoginFailure("Login failed: redirected back to login page. Check credentials.")
+                logger.error(
+                    "Login failed: redirected back to login page without success indicators."
+                )
+                raise LoginFailure(
+                    "Login failed: redirected back to login page. Check credentials."
+                )
 
             logger.info("Login successful. Current URL: %s", current_url_after)
 
@@ -224,10 +258,12 @@ class AuthManager:
             await self.save_session()
             return True
         finally:
-            # We do NOT close the page immediately because the caller
-            # will continue using the context. However, we should close
-            # the login-specific page if it is separate from the context.
-            pass
+            # Close the login page when finished to avoid leaking pages in the
+            # shared browser context. The caller can still use the context.
+            try:
+                await page.close()
+            except Exception as exc:
+                logger.warning("Failed to close login page: %s", exc)
 
     async def save_session(self) -> None:
         """Persist the current browser context session to disk.
