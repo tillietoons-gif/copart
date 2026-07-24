@@ -142,6 +142,12 @@ class AuctionCalendarEntry(BaseModel):
     table_section: str | None = Field(default=None, description="Calendar table section or source")
     row_index: int | None = Field(default=None, description="Row index within the calendar table")
     column_index: int | None = Field(default=None, description="Column index within the calendar table")
+    lots_view_url: HttpUrl | None = Field(
+        default=None, description="URL to view lots / auction detail (View Lots button href)"
+    )
+    lots_view_text: str | None = Field(
+        default=None, description="Anchor/button text for the lots view link"
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

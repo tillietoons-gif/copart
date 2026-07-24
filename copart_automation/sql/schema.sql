@@ -66,10 +66,13 @@ CREATE TABLE IF NOT EXISTS auction_calendar (
     table_section TEXT,
     row_index INTEGER,
     column_index INTEGER,
+    lots_view_url TEXT,
+    lots_view_text TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(event_date, auction_time, description)
 );
+CREATE INDEX IF NOT EXISTS idx_auction_calendar_lots_url ON auction_calendar(lots_view_url);
 CREATE INDEX IF NOT EXISTS idx_auction_calendar_date ON auction_calendar(event_date);
 CREATE INDEX IF NOT EXISTS idx_auction_calendar_section ON auction_calendar(table_section);
 

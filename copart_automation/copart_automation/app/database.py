@@ -104,12 +104,31 @@ class DatabaseModule:
                         table_section TEXT,
                         row_index INTEGER,
                         column_index INTEGER,
+                        lots_view_url TEXT,
+                        lots_view_text TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         UNIQUE(event_date, auction_time, description)
                     )
                 """)
                 conn.commit()
+
+            # Migration: ensure new columns exist for existing DBs
+            try:
+                cols = [row[1] for row in conn.execute("PRAGMA table_info(auction_calendar)").fetchall()]
+                if "lots_view_url" not in cols:
+                    conn.execute("ALTER TABLE auction_calendar ADD COLUMN lots_view_url TEXT")
+                    logger.info("Migrated auction_calendar: added lots_view_url")
+                if "lots_view_text" not in cols:
+                    conn.execute("ALTER TABLE auction_calendar ADD COLUMN lots_view_text TEXT")
+                    logger.info("Migrated auction_calendar: added lots_view_text")
+                conn.commit()
+                # Ensure index for new column
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_auction_calendar_lots_url ON auction_calendar(lots_view_url)")
+                conn.commit()
+            except Exception as exc:
+                logger.warning(f"Auction calendar migration check failed: {exc}")
+
             logger.info("Database schema initialized at {}", self.db_path)
         finally:
             conn.close()
@@ -218,12 +237,22 @@ class DatabaseModule:
         conn = sqlite3.connect(str(self.db_path))
         try:
             data = entry.to_database_dict()
+            # Ensure updated_at is now for upsert
+            # Use INSERT ... ON CONFLICT to update lot view url when duplicate found
             cursor = conn.execute(
                 """
-                INSERT OR IGNORE INTO auction_calendar (
+                INSERT INTO auction_calendar (
                     event_date, auction_time, description, table_section,
-                    row_index, column_index, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    row_index, column_index, lots_view_url, lots_view_text,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_date, auction_time, description) DO UPDATE SET
+                    table_section = COALESCE(excluded.table_section, auction_calendar.table_section),
+                    row_index = COALESCE(excluded.row_index, auction_calendar.row_index),
+                    column_index = COALESCE(excluded.column_index, auction_calendar.column_index),
+                    lots_view_url = COALESCE(excluded.lots_view_url, auction_calendar.lots_view_url),
+                    lots_view_text = COALESCE(excluded.lots_view_text, auction_calendar.lots_view_text),
+                    updated_at = excluded.updated_at
                 """,
                 (
                     data["event_date"],
@@ -232,12 +261,22 @@ class DatabaseModule:
                     data.get("table_section"),
                     data.get("row_index"),
                     data.get("column_index"),
+                    str(data.get("lots_view_url")) if data.get("lots_view_url") else None,
+                    data.get("lots_view_text"),
                     data.get("created_at"),
                     data.get("updated_at"),
                 ),
             )
             conn.commit()
-            return cursor.lastrowid or 0
+            # If insert resulted in conflict, lastrowid may be 0; try to fetch id
+            if cursor.lastrowid and cursor.lastrowid != 0:
+                return cursor.lastrowid
+            # Fetch existing id for the conflicted row
+            row = conn.execute(
+                "SELECT id FROM auction_calendar WHERE event_date = ? AND COALESCE(auction_time,'') = COALESCE(?, '') AND COALESCE(description,'') = COALESCE(?, '')",
+                (data["event_date"], data.get("auction_time"), data.get("description")),
+            ).fetchone()
+            return row[0] if row else 0
         finally:
             conn.close()
 
