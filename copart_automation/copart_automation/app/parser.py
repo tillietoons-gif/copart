@@ -100,6 +100,42 @@ class VehicleParser:
             logger.error(f"Failed to parse vehicle details: {exc}")
             raise ParseError(f"Could not parse vehicle details: {exc}") from exc
 
+    async def parse_lots_list(self, page: Page) -> list[str]:
+        """Parse an auction 'lots view' page and return a list of lot detail URLs.
+
+        This returns absolute URLs to individual lot/detail pages.
+        """
+        logger.info("Parsing lots list from {}", page.url)
+        html_content = await page.content()
+        soup = BeautifulSoup(html_content, "lxml")
+
+        urls: list[str] = []
+        # Common selectors for lot links/buttons
+        link_selectors = [
+            "a[href*='/lot/']",
+            "a[href*='/vehicle/']",
+            "a.view-lots, a.lot-link, .lot a",
+        ]
+        for sel in link_selectors:
+            for a in soup.select(sel):
+                href = a.get("href")
+                if not href:
+                    continue
+                if href.startswith("/"):
+                    href = f"https://www.copart.com{href}"
+                if href.startswith("http") and href not in urls:
+                    urls.append(href)
+
+        # Deduplicate while preserving order
+        seen = set()
+        deduped: list[str] = []
+        for u in urls:
+            if u not in seen:
+                seen.add(u)
+                deduped.append(u)
+        logger.info("Found {} lot URLs on page", len(deduped))
+        return deduped
+
     async def _parse_result_container(self, container: Any) -> Vehicle | None:
         """Parse a single result container into a Vehicle model."""
         # Extract VIN (look for text patterns or specific selectors)

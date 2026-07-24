@@ -289,6 +289,16 @@ class DatabaseModule:
         finally:
             conn.close()
 
+    def get_auction_calendar_entries(self) -> list[AuctionCalendarEntry]:
+        """Return all auction_calendar rows as AuctionCalendarEntry instances."""
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM auction_calendar WHERE COALESCE(lots_view_url,'') != '' ORDER BY event_date").fetchall()
+            return [AuctionCalendarEntry.from_database_row(dict(row)) for row in rows]
+        finally:
+            conn.close()
+
     def get_vehicles_by_make_model(self, make: str, model: str | None = None) -> list[Vehicle]:
         conn = sqlite3.connect(str(self.db_path))
         try:

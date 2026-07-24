@@ -75,6 +75,34 @@ async def run_automation_workflow() -> int:
                 logger.info("Auction calendar parse returned {} entries", len(calendar_entries))
                 for entry in calendar_entries:
                     db.insert_auction_calendar_entry(entry)
+                # After inserting calendar entries, iterate through auctions that have a lots view URL
+                auction_entries = db.get_auction_calendar_entries()
+                logger.info("Found {} auction entries with lots URLs to scrape.", len(auction_entries))
+                for auction in auction_entries:
+                    if not auction.lots_view_url:
+                        continue
+                    try:
+                        logger.info("Opening lots view for auction: {} -> {}", auction.description, auction.lots_view_url)
+                        lots_page = await navigation.navigate_to_page(auction.lots_view_url, timeout=settings.navigation_timeout)
+                        try:
+                            lot_urls = await auction_parser.parse_lots_list(lots_page)
+                            logger.info("Found {} lots for auction {}", len(lot_urls), auction.description)
+                            # Visit each lot URL and parse details
+                            for lot_url in lot_urls:
+                                try:
+                                    lot_page = await navigation.navigate_to_page(lot_url, timeout=settings.navigation_timeout)
+                                    try:
+                                        vehicle = await auction_parser.parse_vehicle_details(lot_page)
+                                        if vehicle:
+                                            db.insert_vehicle(vehicle)
+                                    finally:
+                                        await lot_page.close()
+                                except Exception as exc:
+                                    logger.warning("Failed to parse lot {}: {}", lot_url, exc)
+                        finally:
+                            await lots_page.close()
+                    except Exception as exc:
+                        logger.warning("Failed to open lots view {}: {}", auction.lots_view_url, exc)
             finally:
                 await calendar_page.close()
 
